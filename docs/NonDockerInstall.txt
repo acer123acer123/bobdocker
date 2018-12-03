@@ -1,0 +1,121 @@
+## Revision History
+#  2015/08/05 - Initial version
+
+This document describes the steps necessary to install the application 
+  on a DreamHost web server.  Minor modifications may be required for
+  your particular hosting providor.  
+
+# DreamHost:  Create domain
+  Create a new domain on your server. 
+  The web folder should be $HOME/public  (i.e. /home/abc/demo.flchomegroup.com/public)
+  Enable Passenger
+  Select PHP 5.4 FastCGI
+  Enable SSH for the account so that you can install / configure the application
+# VPS:  Create users (DreamHost can skip this section)
+  sudo groupadd --system webapps
+  sudo useradd --system --gid webapps --shell /bin/bash --home /webapps/bob.flchomegroup.com bob 
+
+# Create virtual environment
+  cd ~
+  virtualenv .
+  source bin/activate
+
+# Retrive Application Code
+  cd ~
+  mkdir git; cd git
+  git clone https://github.com/acer123acer123/bob.git
+  This downloads the data into the bob/ directory. 
+  We need to rename it and then move everything in it up to $HOME/<domain>
+  cd ~/git/bob/
+  mv * ~/
+  cd ~
+  
+# Install Django apps
+  Make sure that you source the virtualenv file (source $HOME/<domain>/env/bin/activate)
+  pip install -r ./requirements.txt
+
+# Configure Django application
+  cd ~/bob/bob/
+  mv SETTINGS.EXAMPLE settings.py
+  vi settings.py
+  modify the email and database sections to fit your requirements
+  
+  cd $HOME/<domain>/bob/school
+  mv MAILGUN.EXAMPLE mailgun.py
+  vi mailgun.py
+  modify the api key and the URL to fit your requirements
+ 
+  mkdir -p ~/logs ~/bob/static
+ 
+  cd ~/bob
+  ./manage.py collectstatic
+
+Copy TinyMCE & FileBrowser to ~/public/static/js
+mkdir ~/public/static/media
+  
+
+# Load the database
+  vi ~/.my.cnf
+    [mysqldump]
+    user = flchomegroup_p
+    password = ThisIsBob!
+
+  mysql -h mysql.flchomegroup.com -u flchomegroup_p -p flchomegroup_play <flc_sql
+
+  ******************* NEED INFO ***********
+
+# Install & Configure gunicorn
+  cd ~
+  pip install gunicorn
+  cd ~/bob
+  mkdir ~/run
+  chmod 775 ~/run
+  cd ~/tools
+  mv gunicorn_start ~/bin/gunicorn_start
+  chmod 755 ~/bin/gunicorn_start
+  vi ~/bin/gunicorn_start   # modify paths as necessary
+
+  vi ~/bob/bob/settings.py  # comment out devserver
+
+
+# CRONTAB for Post Office
+
+
+# NGINX
+  cd /etc/nginx/sites-available
+  vi bob
+  upstream test_app_server {
+    server unix:/webapps/bob.flchomegroup.com/run/gunicorn.sock fail_timeout=0;
+  }
+  server # bob.flchomegroup.com
+  {
+    listen 80;
+    expires off;
+    server_name bob.flchomegroup.com;
+
+    location /media {
+      root /webapps/bob.flchomegroup.com/public/;
+    }
+
+    location /static {
+      root /webapps/bob.flchomegroup.com/public/;
+    }
+
+    location /js {
+      root /webapps/bob.flchomegroup.com/public/;
+    }
+
+
+    location /
+    {
+      proxy_pass        http://test_app_server;
+      proxy_redirect    off;
+      proxy_set_header  Host $host;
+      proxy_set_header  X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+  }
+  
+  cd /etc/nginx/sites-enabled
+  ln -s /etc/nginx/sites-available/bob /etc/nginx/sites-enabled/bob
+  service nginx restart
+

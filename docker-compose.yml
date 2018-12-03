@@ -1,0 +1,89 @@
+# resources:
+# http://www.ameyalokare.com/docker/2017/09/20/nginx-flask-postgres-docker-compose.html
+# https://github.com/juggernaut/nginx-flask-postgres-docker-compose-example
+# https://serverfault.com/questions/783806/docker-how-to-django-uwsgi-gunicorn-nginx/787402
+# https://github.com/andrecp/django-tutorial-docker-nginx-postgres
+# https://github.com/realpython/dockerizing-django
+# http://ruddra.com/2016/08/14/docker-django-nginx-postgres/index.html
+# https://stackoverflow.com/questions/32180589/docker-how-to-expose-a-socket-over-a-port-for-a-django-application
+
+
+version: '3'
+
+services:
+  database1:
+    image: mysql
+    volumes:
+      - database1_volume:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --verbose
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+    networks:
+      - database1_network
+
+  mysql-backup:
+        image: vmpartner/mysql-buckup
+        links:
+            - database1:mysql
+        depends_on:
+            - database1
+        volumes:
+            - ./mysql/bin:/usr/local/bin
+            - ./mysql/backup:/backup
+        environment:
+            MYSQL_HOST: mysql
+            MYSQL_USER: root
+            MYSQL_PASSWORD: example
+            MYSQL_DATABASE: flchomegroup_fred 
+            CRON_JOB: "0 */6 * * *"
+        restart: unless-stopped
+        networks:
+            - database1_network
+
+  # DB Admin
+  adminer:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - 8080:80
+    networks:
+      - database1_network
+    links:
+      - "database1:db"
+    
+  # web container, with django + gunicorn
+  djangoapp:
+    build: djangoapp/.
+    environment:
+      - DJANGO_SETTINGS_MODULE
+    volumes:
+      - ./nginx/public/static/media:/code/public/static/media
+    networks:
+      - database1_network
+      - nginx_network
+    depends_on:
+      - database1
+
+  # reverse proxy container (nginx)
+  nginx:
+    build: nginx/.
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx/config/nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/public/static/media:/code/public/static/media
+    networks:
+      - nginx_network
+    depends_on:
+      - djangoapp
+
+networks:
+  database1_network:
+    driver: bridge
+  nginx_network:
+    driver: bridge
+
+volumes:
+  database1_volume:
+  static:
+  media:
